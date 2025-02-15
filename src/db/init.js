@@ -33,19 +33,22 @@ export const initializeTables = async () => {
 
       -- Function to create user answers table
       CREATE OR REPLACE FUNCTION create_user_answers_table(username TEXT) 
-      RETURNS void AS $$
-      BEGIN
-        EXECUTE format('
-          CREATE TABLE IF NOT EXISTS user_answers_%I (
-            id SERIAL PRIMARY KEY,
-            question_id INTEGER NOT NULL,
-            text_answer TEXT,
-            image_answer_url VARCHAR(255),
-            submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            is_accepted BOOLEAN DEFAULT FALSE,
-            admin_feedback TEXT,
-            FOREIGN KEY (question_id) REFERENCES question_bank(id)
-          )', username);
+RETURNS void AS $$
+BEGIN
+  EXECUTE format('
+    CREATE TABLE IF NOT EXISTS user_answers_%I (
+      id SERIAL PRIMARY KEY,
+      question_id INTEGER NOT NULL,
+      text_answer TEXT,
+      image_answer_url VARCHAR(255),
+      submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      is_reviewed BOOLEAN DEFAULT FALSE,
+      is_accepted BOOLEAN DEFAULT FALSE,
+      reviewed_at TIMESTAMP,
+      reviewed_by INTEGER REFERENCES users(id),
+      admin_feedback TEXT,
+      FOREIGN KEY (question_id) REFERENCES question_bank(id)
+    )', username);
       END;
       $$ LANGUAGE plpgsql;
 

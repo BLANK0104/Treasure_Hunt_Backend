@@ -1,23 +1,26 @@
 import express from 'express';
 import { 
   createTeam,
-  getCurrentQuestion, 
+  getCurrentQuestion,
   submitAnswer,
-  getParticipantAnswers 
+  getTeams,
+  getTeamAnswers,
+  reviewAnswer,
+  getTeamResults
 } from '../controllers/teamController.js';
 import { authenticateToken, isAdmin } from '../middleware/authMiddleware.js';
 import { upload } from '../middleware/uploadMiddleware.js';
 
 const router = express.Router();
 
-// Initial team setup (assigns questions)
-router.post('/setup', authenticateToken, createTeam);
+// Admin routes
+router.get('/teams', authenticateToken, isAdmin, getTeams);
+router.get('/teams/results', authenticateToken, isAdmin, getTeamResults);
+router.get('/teams/:username/answers', authenticateToken, isAdmin, getTeamAnswers);
+router.post('/teams/:username/answers/:answerId/review', authenticateToken, isAdmin, reviewAnswer);
 
-// Question handling
+// Participant routes
 router.get('/current-question', authenticateToken, getCurrentQuestion);
 router.post('/submit/:questionId', authenticateToken, upload.single('image'), submitAnswer);
-
-// Admin routes
-router.get('/answers/:username', authenticateToken, isAdmin, getParticipantAnswers);
 
 export default router;

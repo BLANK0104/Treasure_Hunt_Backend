@@ -1,4 +1,109 @@
 import pool from '../db/db.js';
+import { calculateTeamPoints } from '../utils/pointsCalculator.js';
+
+export const getTeams = async (req, res) => {
+  try {
+    const { rows } = await pool.query('SELECT id, username FROM users WHERE role = $1', ['participant']);
+    
+    const teamsWithPoints = await Promise.all(
+      rows.map(async (user) => ({
+        ...user,
+        total_points: await calculateTeamPoints(user.username)
+      }))
+    );
+
+    res.json({
+      success: true,
+      teams: teamsWithPoints
+    });
+  } catch (error) {
+    console.error('Error in getTeams:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch teams',
+      error: error.message
+    });
+  }
+};
+
+export const getTeamAnswers = async (req, res) => {
+  try {
+    const { username } = req.params;
+
+    // Get all answers for the team with question details
+    const answersQuery = `
+      SELECT 
+        ua.*,
+        qb.question as question_text,
+        qb.points,
+        qb.requires_image,
+        u.username as reviewed_by_username
+      FROM user_answers_${username} ua
+      JOIN question_bank qb ON ua.question_id = qb.id
+      LEFT JOIN users u ON ua.reviewed_by = u.id
+      ORDER BY ua.submitted_at DESC
+    `;
+    
+    const { rows } = await pool.query(answersQuery);
+    res.json({
+      success: true,
+      answers: rows
+    });
+  } catch (error) {
+    console.error('Error fetching team answers:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
+export const reviewAnswer = async (req, res) => {
+  try {
+    const { username, answerId } = req.params;
+    const { is_accepted, feedback } = req.body;
+    
+    const updateQuery = `
+      UPDATE user_answers_${username}
+      SET 
+        is_reviewed = true,
+        is_accepted = $1,
+        admin_feedback = $2,
+        reviewed_at = CURRENT_TIMESTAMP,
+        reviewed_by = $3
+      WHERE id = $4
+      RETURNING *
+    `;
+    
+    const { rows } = await pool.query(updateQuery, [
+      is_accepted, 
+      feedback,
+      req.user.id,
+      answerId
+    ]);
+
+    if (rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Answer not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: `Answer ${is_accepted ? 'accepted' : 'rejected'} successfully`,
+      answer: rows[0]
+    });
+  } catch (error) {
+    console.error('Error reviewing answer:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
+// ...existing code...
 
 export const createTeam = async (req, res) => {
   try {
@@ -161,6 +266,59 @@ export const getParticipantAnswers = async (req, res) => {
     res.status(500).json({
       success: false,
       message: error.message
+    });
+  }
+};
+
+export const getTeamResults = async (req, res) => {
+  try {
+    // Get all participants first
+    const usersQuery = 'SELECT id, username FROM users WHERE role = $1';
+    const { rows: users } = await pool.query(usersQuery, ['participant']);
+
+    // Calculate results for each user
+    const results = await Promise.all(users.map(async (user) => {
+      const pointsQuery = `
+        SELECT 
+          u.id,
+          u.username,
+          COALESCE(
+            (SELECT COUNT(*)
+             FROM user_answers_${user.username} ua
+             WHERE ua.is_accepted = true), 0
+          ) as questions_solved,
+          COALESCE(
+            (SELECT SUM(qb.points)
+             FROM user_answers_${user.username} ua
+             JOIN question_bank qb ON ua.question_id = qb.id
+             WHERE ua.is_accepted = true), 0
+          ) as total_points
+        FROM users u
+        WHERE u.id = $1
+      `;
+
+      const { rows } = await pool.query(pointsQuery, [user.id]);
+      return rows[0];
+    }));
+
+    // Sort by points and questions solved
+    const sortedResults = results.sort((a, b) => {
+      if (b.total_points !== a.total_points) {
+        return b.total_points - a.total_points;
+      }
+      return b.questions_solved - a.questions_solved;
+    });
+
+    res.json({
+      success: true,
+      results: sortedResults
+    });
+  } catch (error) {
+    console.error('Error getting team results:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch team results',
+      error: error.message
     });
   }
 };
