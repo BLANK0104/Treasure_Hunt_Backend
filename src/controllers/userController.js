@@ -4,38 +4,39 @@ import jwt from 'jsonwebtoken';
 
 export const registerUser = async (req, res) => {
   try {
-    const { username, password } = req.body;
-    
-    // Check if username already exists
-    const existingUser = await pool.query('SELECT * FROM users WHERE username = $1', [username]);
-    if (existingUser.rows.length > 0) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'Username already exists' 
-      });
-    }
-
-    // Hash password
+    const { username, password, role } = req.body;
     const hashedPassword = await bcrypt.hash(password, 10);
-    
-    // Set default role as participant for registration
-    const role = 'participant';
-    
-    // Insert user
-    const result = await pool.query(
+
+    // Create user
+    const userResult = await pool.query(
       'INSERT INTO users (username, password, role) VALUES ($1, $2, $3) RETURNING id, username, role',
       [username, hashedPassword, role]
     );
 
+    if (role === 'participant') {
+      // Get 10 random questions
+      const questions = await pool.query(
+        'SELECT id FROM question_bank ORDER BY RANDOM() LIMIT 10'
+      );
+
+      // Assign questions to user
+      for (const question of questions.rows) {
+        await pool.query(
+          'INSERT INTO question_assignments (user_id, question_id) VALUES ($1, $2)',
+          [userResult.rows[0].id, question.id]
+        );
+      }
+    }
+
     res.status(201).json({
       success: true,
-      user: result.rows[0]
+      user: userResult.rows[0]
     });
   } catch (error) {
     console.error('Registration error:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Registration failed' 
+    res.status(500).json({
+      success: false,
+      message: error.message
     });
   }
 };
@@ -43,31 +44,64 @@ export const registerUser = async (req, res) => {
 export const loginUser = async (req, res) => {
   try {
     const { username, password } = req.body;
-    
-    const userResult = await pool.query('SELECT * FROM users WHERE username = $1', [username]);
-    
+
+    // Check if user exists
+    const userResult = await pool.query(
+      'SELECT * FROM users WHERE username = $1',
+      [username]
+    );
+
     if (userResult.rows.length === 0) {
-      return res.status(401).json({ 
-        success: false, 
-        message: 'Invalid credentials' 
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid credentials'
       });
     }
 
     const user = userResult.rows[0];
+
+    // Verify password
     const validPassword = await bcrypt.compare(password, user.password);
-    
     if (!validPassword) {
-      return res.status(401).json({ 
-        success: false, 
-        message: 'Invalid credentials' 
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid credentials'
       });
     }
 
+    // Generate JWT token
     const token = jwt.sign(
-      { id: user.id, username: user.username, role: user.role },
+      { 
+        id: user.id, 
+        username: user.username, 
+        role: user.role 
+      },
       process.env.JWT_SECRET,
       { expiresIn: '24h' }
     );
+
+    // If participant, check if questions are assigned
+    if (user.role === 'participant') {
+      const assignedQuestions = await pool.query(
+        'SELECT COUNT(*) FROM question_assignments WHERE user_id = $1',
+        [user.id]
+      );
+
+      if (assignedQuestions.rows[0].count === 0) {
+        // Get 10 random questions
+        const questions = await pool.query(
+          'SELECT id FROM question_bank ORDER BY RANDOM() LIMIT 10'
+        );
+
+        // Assign questions to user
+        for (const question of questions.rows) {
+          await pool.query(
+            'INSERT INTO question_assignments (user_id, question_id) VALUES ($1, $2)',
+            [user.id, question.id]
+          );
+        }
+      }
+    }
 
     res.json({
       success: true,
@@ -80,9 +114,9 @@ export const loginUser = async (req, res) => {
     });
   } catch (error) {
     console.error('Login error:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Login failed' 
+    res.status(500).json({
+      success: false,
+      message: error.message
     });
   }
 };

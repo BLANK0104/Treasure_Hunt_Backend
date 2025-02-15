@@ -15,14 +15,22 @@ dotenv.config();
 
 const app = express();
 
-app.use(cors({
+// Configure CORS
+const corsOptions = {
   origin: 'http://localhost:5173',
-  credentials: true
-}));
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+};
+
+app.use(cors(corsOptions));
 app.use(express.json());
 
 // Serve static files from uploads directory
-app.use('/uploads', express.static(join(__dirname, '../uploads')));
+app.use('/uploads', (req, res, next) => {
+  res.header('Cross-Origin-Resource-Policy', 'cross-origin');
+  next();
+}, express.static(join(__dirname, '../uploads')));
 
 // Initialize database tables
 initializeTables();

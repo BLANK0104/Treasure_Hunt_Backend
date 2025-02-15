@@ -3,6 +3,7 @@ import pool from './db.js';
 export const initializeTables = async () => {
   try {
     await pool.query(`
+      -- Users table
       CREATE TABLE IF NOT EXISTS users (
         id SERIAL PRIMARY KEY,
         username VARCHAR(255) NOT NULL UNIQUE,
@@ -10,25 +11,59 @@ export const initializeTables = async () => {
         role VARCHAR(20) CHECK (role IN ('admin', 'participant')) NOT NULL
       );
 
+      -- Question bank
       CREATE TABLE IF NOT EXISTS question_bank (
         id SERIAL PRIMARY KEY,
         question TEXT NOT NULL,
         points INTEGER NOT NULL,
+        requires_image BOOLEAN DEFAULT FALSE,
         image_url VARCHAR(255)
       );
 
-      CREATE TABLE IF NOT EXISTS team (
+      -- Question assignments
+      CREATE TABLE IF NOT EXISTS question_assignments (
         id SERIAL PRIMARY KEY,
-        username VARCHAR(255) NOT NULL,
-        team_member_name VARCHAR(255) NOT NULL,
-        question_id INTEGER,
-        time_of_completion TIMESTAMP,
-        text_answer TEXT,
-        image_answer_url VARCHAR(255),
-        is_accepted BOOLEAN DEFAULT FALSE,
-        FOREIGN KEY (username) REFERENCES users(username),
-        FOREIGN KEY (question_id) REFERENCES question_bank(id)
+        user_id INTEGER NOT NULL,
+        question_id INTEGER NOT NULL,
+        assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id),
+        FOREIGN KEY (question_id) REFERENCES question_bank(id),
+        UNIQUE(user_id, question_id)
       );
+
+      -- Function to create user answers table
+      CREATE OR REPLACE FUNCTION create_user_answers_table(username TEXT) 
+      RETURNS void AS $$
+      BEGIN
+        EXECUTE format('
+          CREATE TABLE IF NOT EXISTS user_answers_%I (
+            id SERIAL PRIMARY KEY,
+            question_id INTEGER NOT NULL,
+            text_answer TEXT,
+            image_answer_url VARCHAR(255),
+            submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            is_accepted BOOLEAN DEFAULT FALSE,
+            admin_feedback TEXT,
+            FOREIGN KEY (question_id) REFERENCES question_bank(id)
+          )', username);
+      END;
+      $$ LANGUAGE plpgsql;
+
+      -- Trigger to create user answers table on user creation
+      CREATE OR REPLACE FUNCTION create_user_table_trigger()
+      RETURNS TRIGGER AS $$
+      BEGIN
+        IF NEW.role = 'participant' THEN
+          PERFORM create_user_answers_table(NEW.username);
+        END IF;
+        RETURN NEW;
+      END;
+      $$ LANGUAGE plpgsql;
+
+      CREATE OR REPLACE TRIGGER user_creation_trigger
+      AFTER INSERT ON users
+      FOR EACH ROW
+      EXECUTE FUNCTION create_user_table_trigger();
     `);
     console.log('Tables initialized successfully');
   } catch (error) {
