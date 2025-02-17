@@ -158,43 +158,55 @@ export const createTeam = async (req, res) => {
 
 export const getCurrentQuestion = async (req, res) => {
   try {
-    const { id: userId, username } = req.user;
+    const { username } = req.user;
 
-    // Get the first unanswered question from assigned questions
-    const questionResult = await pool.query(
-      `SELECT qa.id as assignment_id, qb.* 
-       FROM question_assignments qa
-       JOIN question_bank qb ON qa.question_id = qb.id
-       WHERE qa.user_id = $1
-       AND NOT EXISTS (
-         SELECT 1 
-         FROM user_answers_${username} ua 
-         WHERE ua.question_id = qb.id
-       )
-       ORDER BY qa.id
-       LIMIT 1`,
-      [userId]
-    );
+    // Get the next unanswered question from assigned questions
+    const query = `
+      SELECT qb.*
+      FROM question_bank qb
+      JOIN question_assignments qa ON qb.id = qa.question_id
+      JOIN users u ON qa.user_id = u.id
+      WHERE u.username = $1
+      AND qb.id NOT IN (
+        SELECT ua.question_id 
+        FROM user_answers_${username} ua
+      )
+      ORDER BY qb.id ASC
+      LIMIT 1;
+    `;
 
-    if (questionResult.rows.length === 0) {
+    console.log('Executing query for user:', username); // Debug log
+    const { rows } = await pool.query(query, [username]);
+    console.log('Query result:', rows); // Debug log
+
+    if (rows.length === 0) {
       return res.json({
         success: true,
+        message: 'All questions completed!',
         completed: true
       });
     }
 
     res.json({
       success: true,
-      question: questionResult.rows[0]
+      question: {
+        id: rows[0].id,
+        text: rows[0].question,
+        points: rows[0].points,
+        requires_image: rows[0].requires_image,
+        image_url: rows[0].image_url
+      }
     });
   } catch (error) {
-    console.error('Error fetching question:', error);
+    console.error('Error getting current question:', error, error.stack);
     res.status(500).json({
       success: false,
-      message: error.message
+      message: 'Failed to fetch current question',
+      error: error.message
     });
   }
 };
+
 export const submitAnswer = async (req, res) => {
   try {
     const { questionId } = req.params;
