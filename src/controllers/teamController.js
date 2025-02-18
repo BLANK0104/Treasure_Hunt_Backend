@@ -160,7 +160,6 @@ export const getCurrentQuestion = async (req, res) => {
   try {
     const { username } = req.user;
 
-    // Get the next unanswered question from assigned questions
     const query = `
       SELECT qb.*
       FROM question_bank qb
