@@ -157,47 +157,59 @@ export const createTeam = async (req, res) => {
 export const getCurrentQuestion = async (req, res) => {
   try {
     const { username } = req.user;
+    const { is_bonus } = req.query;
+    const isBonus = is_bonus === 'true';
 
-    const query = `
-      SELECT qb.*, 
-             (SELECT COUNT(*) FROM question_assignments WHERE user_id = u.id) AS total_questions,
-             (SELECT COUNT(*) FROM user_answers_${username}) AS answered_questions
+    // Get count of regular questions answered
+    const regularQuestionsQuery = `
+      SELECT COUNT(*) as answered
+      FROM user_answers_${username} ua
+      JOIN question_bank qb ON ua.question_id = qb.id
+      WHERE qb.is_bonus = false;
+    `;
+    const regularProgress = await pool.query(regularQuestionsQuery);
+    const answeredRegularCount = parseInt(regularProgress.rows[0].answered);
+
+    // Get count of bonus questions completed
+    const bonusQuestionsQuery = `
+      SELECT COUNT(*) as completed_bonus
+      FROM user_answers_${username} ua
+      JOIN question_bank qb ON ua.question_id = qb.id
+      WHERE qb.is_bonus = true;
+    `;
+    const bonusProgress = await pool.query(bonusQuestionsQuery);
+    const completedBonusCount = parseInt(bonusProgress.rows[0].completed_bonus);
+
+    // Get next unanswered question
+    const questionQuery = `
+      SELECT qb.* 
       FROM question_bank qb
       JOIN question_assignments qa ON qb.id = qa.question_id
       JOIN users u ON qa.user_id = u.id
       WHERE u.username = $1
       AND qb.id NOT IN (
-        SELECT ua.question_id 
-        FROM user_answers_${username} ua
+        SELECT question_id 
+        FROM user_answers_${username}
       )
+      AND qb.is_bonus = $2
       ORDER BY qb.id ASC
       LIMIT 1;
     `;
 
-    console.log('Executing query for user:', username); // Debug log
-    const { rows } = await pool.query(query, [username]);
-    console.log('Query result:', rows); // Debug log
+    const { rows } = await pool.query(questionQuery, [username, isBonus]);
 
     if (rows.length === 0) {
       return res.json({
         success: true,
-        message: 'All questions completed!',
-        completed: true
+        completed: true,
+        message: isBonus ? 'No bonus questions available' : 'All questions completed!'
       });
     }
 
-    // Fetch the last inserted id from the user_answers table
-    const lastAnswerQuery = `
-      SELECT id FROM user_answers_${username}
-      ORDER BY id DESC
-      LIMIT 1;
-    `;
-    const lastAnswerResult = await pool.query(lastAnswerQuery);
-    const lastAnswerId = lastAnswerResult.rows.length > 0 ? lastAnswerResult.rows[0].id : 0;
-    const currentQuestionNumber = lastAnswerId + 1;
-
-    const totalQuestions = rows[0].total_questions;
-    const answeredQuestions = rows[0].answered_questions;
+    // Calculate if bonus is available
+    const currentMilestone = Math.floor((answeredRegularCount + 1) / 15);
+    const canTakeBonus = (answeredRegularCount + 1) % 15 === 0 && 
+                        completedBonusCount < currentMilestone;
 
     res.json({
       success: true,
@@ -206,13 +218,16 @@ export const getCurrentQuestion = async (req, res) => {
         text: rows[0].question,
         points: rows[0].points,
         requires_image: rows[0].requires_image,
-        image_url: rows[0].image_url
+        image_url: rows[0].image_url,
+        is_bonus: rows[0].is_bonus
       },
-      question_number: currentQuestionNumber,
-      total_questions: totalQuestions
+      question_number: answeredRegularCount + 1,
+      completed_bonus: completedBonusCount,
+      can_take_bonus: canTakeBonus
     });
+
   } catch (error) {
-    console.error('Error getting current question:', error, error.stack);
+    console.error('Error in getCurrentQuestion:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to fetch current question',

@@ -13,12 +13,13 @@ export const initializeTables = async () => {
 
       -- Question bank
       CREATE TABLE IF NOT EXISTS question_bank (
-        id SERIAL PRIMARY KEY,
-        question TEXT NOT NULL,
-        points INTEGER NOT NULL,
-        requires_image BOOLEAN DEFAULT FALSE,
-        image_url VARCHAR(255)
-      );
+  id SERIAL PRIMARY KEY,
+  question TEXT NOT NULL,
+  points INTEGER NOT NULL,
+  requires_image BOOLEAN DEFAULT FALSE,
+  image_url VARCHAR(255),
+  is_bonus BOOLEAN DEFAULT FALSE
+);
 
       -- Question assignments
       CREATE TABLE IF NOT EXISTS question_assignments (
