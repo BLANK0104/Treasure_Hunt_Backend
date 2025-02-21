@@ -161,7 +161,9 @@ export const getCurrentQuestion = async (req, res) => {
     const { username } = req.user;
 
     const query = `
-      SELECT qb.*
+      SELECT qb.*, 
+             (SELECT COUNT(*) FROM question_assignments WHERE user_id = u.id) AS total_questions,
+             (SELECT COUNT(*) FROM user_answers_${username}) AS answered_questions
       FROM question_bank qb
       JOIN question_assignments qa ON qb.id = qa.question_id
       JOIN users u ON qa.user_id = u.id
@@ -186,6 +188,19 @@ export const getCurrentQuestion = async (req, res) => {
       });
     }
 
+    // Fetch the last inserted id from the user_answers table
+    const lastAnswerQuery = `
+      SELECT id FROM user_answers_${username}
+      ORDER BY id DESC
+      LIMIT 1;
+    `;
+    const lastAnswerResult = await pool.query(lastAnswerQuery);
+    const lastAnswerId = lastAnswerResult.rows.length > 0 ? lastAnswerResult.rows[0].id : 0;
+    const currentQuestionNumber = lastAnswerId + 1;
+
+    const totalQuestions = rows[0].total_questions;
+    const answeredQuestions = rows[0].answered_questions;
+
     res.json({
       success: true,
       question: {
@@ -194,7 +209,9 @@ export const getCurrentQuestion = async (req, res) => {
         points: rows[0].points,
         requires_image: rows[0].requires_image,
         image_url: rows[0].image_url
-      }
+      },
+      question_number: currentQuestionNumber,
+      total_questions: totalQuestions
     });
   } catch (error) {
     console.error('Error getting current question:', error, error.stack);
