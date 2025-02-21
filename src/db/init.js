@@ -23,14 +23,12 @@ export const initializeTables = async () => {
 
       -- Question assignments
       CREATE TABLE IF NOT EXISTS question_assignments (
-        id SERIAL PRIMARY KEY,
-        user_id INTEGER NOT NULL,
-        question_id INTEGER NOT NULL,
-        assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (user_id) REFERENCES users(id),
-        FOREIGN KEY (question_id) REFERENCES question_bank(id),
-        UNIQUE(user_id, question_id)
-      );
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER REFERENCES users(id),
+  question_id INTEGER REFERENCES question_bank(id),
+  question_order INTEGER,
+  UNIQUE(user_id, question_id)
+);
 
       -- Function to create user answers table
       CREATE OR REPLACE FUNCTION create_user_answers_table(username TEXT) 
