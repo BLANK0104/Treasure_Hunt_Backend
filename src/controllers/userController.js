@@ -14,12 +14,12 @@ export const registerUser = async (req, res) => {
     );
 
     if (role === 'participant') {
-      // Get 10 random questions
+      // Get ALL questions in random order
       const questions = await pool.query(
-        'SELECT id FROM question_bank ORDER BY RANDOM() LIMIT 10'
+        'SELECT id FROM question_bank ORDER BY RANDOM()'
       );
 
-      // Assign questions to user
+      // Assign all questions to user
       for (const question of questions.rows) {
         await pool.query(
           'INSERT INTO question_assignments (user_id, question_id) VALUES ($1, $2)',
@@ -40,7 +40,6 @@ export const registerUser = async (req, res) => {
     });
   }
 };
-
 export const loginUser = async (req, res) => {
   try {
     const { username, password } = req.body;
@@ -69,6 +68,29 @@ export const loginUser = async (req, res) => {
       });
     }
 
+    // If participant, check if questions are assigned
+    if (user.role === 'participant') {
+      const assignedQuestions = await pool.query(
+        'SELECT COUNT(*) FROM question_assignments WHERE user_id = $1',
+        [user.id]
+      );
+
+      if (assignedQuestions.rows[0].count === 0) {
+        // Get ALL questions in random order
+        const questions = await pool.query(
+          'SELECT id FROM question_bank ORDER BY RANDOM()'
+        );
+
+        // Assign all questions to user
+        for (const question of questions.rows) {
+          await pool.query(
+            'INSERT INTO question_assignments (user_id, question_id) VALUES ($1, $2)',
+            [user.id, question.id]
+          );
+        }
+      }
+    }
+
     // Generate JWT token
     const token = jwt.sign(
       { 
@@ -79,29 +101,6 @@ export const loginUser = async (req, res) => {
       process.env.JWT_SECRET,
       { expiresIn: '24h' }
     );
-
-    // If participant, check if questions are assigned
-    if (user.role === 'participant') {
-      const assignedQuestions = await pool.query(
-        'SELECT COUNT(*) FROM question_assignments WHERE user_id = $1',
-        [user.id]
-      );
-
-      if (assignedQuestions.rows[0].count === 0) {
-        // Get 10 random questions
-        const questions = await pool.query(
-          'SELECT id FROM question_bank ORDER BY RANDOM() LIMIT 10'
-        );
-
-        // Assign questions to user
-        for (const question of questions.rows) {
-          await pool.query(
-            'INSERT INTO question_assignments (user_id, question_id) VALUES ($1, $2)',
-            [user.id, question.id]
-          );
-        }
-      }
-    }
 
     res.json({
       success: true,

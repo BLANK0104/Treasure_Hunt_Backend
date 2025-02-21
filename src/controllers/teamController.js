@@ -103,8 +103,6 @@ export const reviewAnswer = async (req, res) => {
   }
 };
 
-// ...existing code...
-
 export const createTeam = async (req, res) => {
   try {
     const { username } = req.user;
@@ -130,12 +128,12 @@ export const createTeam = async (req, res) => {
 
     const userId = userResult.rows[0].id;
 
-    // Get 10 random questions
+    // Get ALL questions in random order
     const questions = await pool.query(
-      'SELECT id FROM question_bank ORDER BY RANDOM() LIMIT 10'
+      'SELECT id FROM question_bank ORDER BY RANDOM()'
     );
 
-    // Assign questions to user
+    // Assign all questions to user
     for (const question of questions.rows) {
       await pool.query(
         'INSERT INTO question_assignments (user_id, question_id) VALUES ($1, $2)',
