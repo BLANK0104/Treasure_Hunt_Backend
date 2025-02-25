@@ -8,6 +8,7 @@ import userRoutes from './routes/userRoutes.js';
 import questionRoutes from './routes/questionRoutes.js';
 import teamRoutes from './routes/teamRoutes.js';
 import { errorHandler } from './middleware/errorHandler.js';
+import { validateDeviceToken } from './middleware/auth.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -37,6 +38,8 @@ app.use('/uploads', (req, res, next) => {
 
 // Initialize database tables
 initializeTables();
+
+app.use('/api', validateDeviceToken);
 
 // Routes
 app.use('/api/users', userRoutes);
