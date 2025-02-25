@@ -259,14 +259,37 @@ export const submitAnswer = async (req, res) => {
     const { username } = req.user;
     const { text_answer } = req.body;
     
+    // First check if question exists and if it requires an image
+    const questionCheck = await pool.query(
+      'SELECT requires_image FROM question_bank WHERE id = $1',
+      [questionId]
+    );
+
+    if (questionCheck.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Question not found'
+      });
+    }
+
+    const { requires_image } = questionCheck.rows[0];
+    const image_answer_url = req.file ? `/uploads/${req.file.filename}` : null;
+
+    // Validate image requirement
+    if (requires_image && !req.file) {
+      return res.status(400).json({
+        success: false,
+        message: 'This question requires an image submission'
+      });
+    }
+
+    // Rest of the validation
     if (!questionId) {
       return res.status(400).json({
         success: false,
         message: 'Question ID is required'
       });
     }
-
-    const image_answer_url = req.file ? `/uploads/${req.file.filename}` : null;
 
     // Verify the question belongs to user's assignments
     const assignmentCheck = await pool.query(
