@@ -1,9 +1,10 @@
 import pool from '../db/db.js';
 
-// Add these new functions at the top of the file
 export const createQuestion = async (req, res) => {
   try {
-    const { question, points, requires_image, is_bonus } = req.body;
+    const { question, points } = req.body;
+    const requires_image = req.body.requires_image === 'true';
+    const is_bonus = req.body.is_bonus === 'true';
     const image_url = req.file ? `/uploads/${req.file.filename}` : null;
 
     if (!question || !points) {
@@ -15,7 +16,7 @@ export const createQuestion = async (req, res) => {
 
     const result = await pool.query(
       'INSERT INTO question_bank (question, points, requires_image, image_url, is_bonus) VALUES ($1, $2, $3, $4, $5) RETURNING *',
-      [question, points, requires_image || false, image_url, is_bonus || false]
+      [question, points, requires_image, image_url, is_bonus]
     );
 
     res.status(201).json({
