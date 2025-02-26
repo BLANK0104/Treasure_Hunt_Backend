@@ -25,7 +25,7 @@ export const validateDeviceToken = async (req, res, next) => {
       return next();
     }
 
-    // Check if user exists and device matches
+    // Check if user exists and device matches current device
     const result = await pool.query(
       'SELECT * FROM users WHERE id = $1',
       [decoded.id]
@@ -40,11 +40,13 @@ export const validateDeviceToken = async (req, res, next) => {
       });
     }
 
-    // Verify device match for non-logout requests
-    if (user.current_device_id && user.current_device_id !== decoded.deviceId) {
+    // If the device ID in the token doesn't match the current one in the database,
+    // it means the user has logged in from another device
+    if (user.current_device_id !== decoded.deviceId) {
       return res.status(401).json({
         success: false,
-        message: 'Account is already active on another device'
+        message: 'Session expired. Please log in again',
+        sessionExpired: true
       });
     }
 

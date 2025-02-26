@@ -69,15 +69,7 @@ export const loginUser = async (req, res) => {
       });
     }
 
-    // Check if user is already logged in on another device
-    if (user.current_device_id && user.current_device_id !== deviceId) {
-      return res.status(403).json({
-        success: false,
-        message: 'Account is already active on another device'
-      });
-    }
-
-    // Update device ID and last login
+    // Simply update to the new device ID - this automatically logs out any other device
     await pool.query(
       'UPDATE users SET current_device_id = $1, last_login = CURRENT_TIMESTAMP WHERE id = $2',
       [deviceId, user.id]
@@ -88,29 +80,6 @@ export const loginUser = async (req, res) => {
       'INSERT INTO device_sessions (user_id, device_id) VALUES ($1, $2) ON CONFLICT (user_id, device_id) DO UPDATE SET last_active = CURRENT_TIMESTAMP',
       [user.id, deviceId]
     );
-
-    // If participant, check if questions are assigned
-    if (user.role === 'participant') {
-      const assignedQuestions = await pool.query(
-        'SELECT COUNT(*) FROM question_assignments WHERE user_id = $1',
-        [user.id]
-      );
-
-      if (assignedQuestions.rows[0].count === 0) {
-        // Get ALL questions in random order
-        const questions = await pool.query(
-          'SELECT id FROM question_bank ORDER BY RANDOM()'
-        );
-
-        // Assign all questions to user
-        for (const question of questions.rows) {
-          await pool.query(
-            'INSERT INTO question_assignments (user_id, question_id) VALUES ($1, $2)',
-            [user.id, question.id]
-          );
-        }
-      }
-    }
 
     // Generate JWT token
     const token = jwt.sign(
