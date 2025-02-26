@@ -42,6 +42,19 @@ export const initializeTables = async () => {
         UNIQUE(user_id, device_id)
       );
 
+      -- Team activity log
+      CREATE TABLE IF NOT EXISTS team_activity_log (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id),
+        activity_type VARCHAR(255) NOT NULL,
+        data JSONB,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- Add IF NOT EXISTS to index creation to prevent errors on subsequent runs
+      CREATE INDEX IF NOT EXISTS idx_team_activity_log_user_id ON team_activity_log(user_id);
+      CREATE INDEX IF NOT EXISTS idx_team_activity_log_created_at ON team_activity_log(created_at);
+
       -- Function to create user answers table
       CREATE OR REPLACE FUNCTION create_user_answers_table(username TEXT) 
       RETURNS void AS $$

@@ -3,18 +3,42 @@ import { calculateTeamPoints } from '../utils/pointsCalculator.js';
 
 export const getTeams = async (req, res) => {
   try {
-    const { rows } = await pool.query('SELECT id, username FROM users WHERE role = $1', ['participant']);
+    const { lastUpdated } = req.query;
+    let query = 'SELECT id, username FROM users WHERE role = $1';
+    const params = ['participant'];
+    
+    // Add timestamp filtering if lastUpdated parameter is provided
+    if (lastUpdated) {
+      // Convert to JavaScript Date object and then to ISO string
+      const lastUpdatedDate = new Date(parseInt(lastUpdated));
+      
+      query = `
+        SELECT u.id, u.username 
+        FROM users u
+        LEFT JOIN (
+          SELECT user_id, MAX(reviewed_at) as last_review
+          FROM team_activity_log
+          GROUP BY user_id
+        ) tal ON u.id = tal.user_id
+        WHERE u.role = $1 AND (tal.last_review > $2 OR tal.last_review IS NULL)
+      `;
+      params.push(lastUpdatedDate.toISOString());
+    }
+    
+    const { rows } = await pool.query(query, params);
     
     const teamsWithPoints = await Promise.all(
       rows.map(async (user) => ({
         ...user,
-        total_points: await calculateTeamPoints(user.username)
+        total_points: await calculateTeamPoints(user.username),
+        answers_count: await getTeamAnswersCount(user.username)
       }))
     );
 
     res.json({
       success: true,
-      teams: teamsWithPoints
+      teams: teamsWithPoints,
+      timestamp: Date.now()
     });
   } catch (error) {
     console.error('Error in getTeams:', error);
@@ -26,9 +50,23 @@ export const getTeams = async (req, res) => {
   }
 };
 
+// Helper function to get team answers count
+async function getTeamAnswersCount(username) {
+  try {
+    const { rows } = await pool.query(
+      `SELECT COUNT(*) as count FROM user_answers_${username}`
+    );
+    return parseInt(rows[0].count);
+  } catch (error) {
+    console.error(`Error getting answer count for ${username}:`, error);
+    return 0;
+  }
+}
+
 export const getTeamAnswers = async (req, res) => {
   try {
     const { username } = req.params;
+    const { lastUpdated } = req.query;
 
     // First check if user exists
     const userCheck = await pool.query(
@@ -43,8 +81,8 @@ export const getTeamAnswers = async (req, res) => {
       });
     }
 
-    // Get all answers with question details
-    const query = `
+    // Base query
+    let query = `
       SELECT 
         ua.id,
         ua.question_id,
@@ -60,10 +98,19 @@ export const getTeamAnswers = async (req, res) => {
         ROW_NUMBER() OVER (ORDER BY ua.submitted_at) as question_number
       FROM user_answers_${username} ua
       JOIN question_bank qb ON ua.question_id = qb.id
-      ORDER BY ua.submitted_at ASC;
     `;
+    
+    // Add timestamp filtering if lastUpdated parameter is provided
+    const params = [];
+    if (lastUpdated) {
+      const lastUpdatedDate = new Date(parseInt(lastUpdated));
+      query += ` WHERE ua.submitted_at > $1 OR (ua.is_reviewed = true AND ua.reviewed_at > $1)`;
+      params.push(lastUpdatedDate.toISOString());
+    }
 
-    const { rows } = await pool.query(query);
+    query += ` ORDER BY ua.submitted_at ASC`;
+
+    const { rows } = await pool.query(query, params);
 
     res.json({
       success: true,
@@ -71,7 +118,8 @@ export const getTeamAnswers = async (req, res) => {
         ...row,
         submitted_at: row.submitted_at?.toISOString(),
         reviewed_at: row.reviewed_at?.toISOString()
-      }))
+      })),
+      timestamp: Date.now()
     });
 
   } catch (error) {
@@ -84,6 +132,18 @@ export const getTeamAnswers = async (req, res) => {
   }
 };
 
+// Add a team activity logging function to track changes
+export const logTeamActivity = async (userId, activityType, data) => {
+  try {
+    await pool.query(
+      'INSERT INTO team_activity_log (user_id, activity_type, data, created_at) VALUES ($1, $2, $3, CURRENT_TIMESTAMP)',
+      [userId, activityType, JSON.stringify(data)]
+    );
+  } catch (error) {
+    console.error('Error logging team activity:', error);
+  }
+};
+
 export const reviewAnswer = async (req, res) => {
   try {
     const { username, answerId } = req.params;
@@ -91,6 +151,13 @@ export const reviewAnswer = async (req, res) => {
     const reviewerId = req.user.id;
 
     console.log('Review params:', { username, answerId, isAccepted, reviewerId }); // Debug log
+
+    // Get user ID for activity logging
+    const userResult = await pool.query(
+      'SELECT id FROM users WHERE username = $1',
+      [username]
+    );
+    const userId = userResult.rows[0]?.id;
 
     const updateQuery = `
       UPDATE user_answers_${username}
@@ -112,10 +179,20 @@ export const reviewAnswer = async (req, res) => {
       });
     }
 
+    // Log the activity for real-time updates
+    if (userId) {
+      await logTeamActivity(userId, 'answer_reviewed', {
+        answerId,
+        isAccepted,
+        reviewerId
+      });
+    }
+
     res.json({
       success: true,
       message: `Answer ${isAccepted ? 'accepted' : 'rejected'} successfully`,
-      answer: rows[0]
+      answer: rows[0],
+      timestamp: Date.now()
     });
 
   } catch (error) {
@@ -406,7 +483,6 @@ export const getTeamResults = async (req, res) => {
       }
     }
 
-    // Sort by points (desc) and time (asc)
     results.sort((a, b) => {
       if (b.total_points !== a.total_points) {
         return b.total_points - a.total_points;
@@ -416,7 +492,8 @@ export const getTeamResults = async (req, res) => {
 
     res.json({
       success: true,
-      results
+      results,
+      timestamp: Date.now()
     });
   } catch (error) {
     console.error('Error getting team results:', error);
