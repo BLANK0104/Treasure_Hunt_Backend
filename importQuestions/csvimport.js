@@ -11,7 +11,7 @@ const __dirname = dirname(__filename);
 
 // Database configuration
 const pool = new Pool({
-  user: 'postgres',
+  user: 'utsav',
   host: 'localhost',
   database: 'treasure_hunt',
   password: 'blank@0104',
@@ -33,7 +33,7 @@ const cleanText = (text) => {
 
 const importQuestionsFromCSV = async () => {
     try {
-      const csvPath = path.join(__dirname, 'questions.csv');
+      const csvPath = path.join(__dirname, 'questions2.csv');
       console.log('Reading CSV file from:', csvPath);
   
       const records = [];
