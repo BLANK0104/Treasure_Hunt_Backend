@@ -140,3 +140,94 @@ export const reviewAnswer = async (req, res) => {
     });
   }
 };
+
+export const updateQuestion = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { question, points } = req.body;
+    const requires_image = req.body.requires_image === 'true';
+    const is_bonus = req.body.is_bonus === 'true';
+    let image_url = null;
+
+    // Check if question exists
+    const questionCheck = await pool.query(
+      'SELECT * FROM question_bank WHERE id = $1',
+      [id]
+    );
+
+    if (questionCheck.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Question not found'
+      });
+    }
+
+    // Handle image updates
+    if (req.file) {
+      // New image uploaded
+      image_url = `/uploads/${req.file.filename}`;
+    } else if (req.body.remove_image === 'true') {
+      // Image removed
+      image_url = null;
+    } else {
+      // Keep existing image
+      image_url = questionCheck.rows[0].image_url;
+    }
+
+    const result = await pool.query(
+      `UPDATE question_bank 
+       SET question = $1, points = $2, requires_image = $3, image_url = $4, is_bonus = $5
+       WHERE id = $6
+       RETURNING *`,
+      [question, points, requires_image, image_url, is_bonus, id]
+    );
+
+    res.json({
+      success: true,
+      question: result.rows[0],
+      message: 'Question updated successfully'
+    });
+  } catch (error) {
+    console.error('Error updating question:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
+export const deleteQuestion = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Check if question exists
+    const questionCheck = await pool.query(
+      'SELECT * FROM question_bank WHERE id = $1',
+      [id]
+    );
+
+    if (questionCheck.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Question not found'
+      });
+    }
+
+    // Delete the question
+    await pool.query(
+      'DELETE FROM question_bank WHERE id = $1',
+      [id]
+    );
+
+    res.json({
+      success: true,
+      message: 'Question deleted successfully'
+    });
+  } catch (error) {
+    console.error('Error deleting question:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
