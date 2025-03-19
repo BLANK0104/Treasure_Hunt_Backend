@@ -63,6 +63,8 @@ async function getTeamAnswersCount(username) {
   }
 }
 
+// In the getTeamAnswers function, update the query to include question image_url
+
 export const getTeamAnswers = async (req, res) => {
   try {
     const { username } = req.params;
@@ -81,7 +83,6 @@ export const getTeamAnswers = async (req, res) => {
       });
     }
 
-    // Base query
     let query = `
       SELECT 
         ua.id,
@@ -89,6 +90,7 @@ export const getTeamAnswers = async (req, res) => {
         qb.question as question_text,
         qb.points,
         qb.is_bonus,
+        qb.image_url as question_image_url,
         ua.text_answer,
         ua.image_answer_url,
         ua.is_reviewed,
